@@ -104,7 +104,7 @@ DWORD WINAPI HandleConnection(LPVOID sock)
 	while (1)
 	{
 		int ret = recv(client, buffer, PACKET_SIZE, 0);
-		if (ret == SOCKET_ERROR) break;
+		if (ret <= 0) break;
 		printf("recieved...\n");
 
 		if (ret > 0)
@@ -124,6 +124,7 @@ DWORD WINAPI HandleConnection(LPVOID sock)
 					break;
 				case GET_LIST:
 					send_iptable(client);
+					shutdown(client, 0);
 					break;
 				default:
 					printf("Unknown command\n");

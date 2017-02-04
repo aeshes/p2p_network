@@ -9,15 +9,22 @@
 
 
 SOCKET connect_to_server(char *host, uint16_t port);
-void get_nodes_from_server(void);
+void register_on_server(SOCKET server, client_node *mynode);
+void get_nodes_from_server(SOCKET server);
 void send_packet(SOCKET sock, uint32_t command, const char *data, size_t size_of_data);
 void send_fake_nodes(SOCKET sock);
+void send_my_info(SOCKET sock);
+SOCKET bind_udp_sock(client_node *myinfo);
+void handle_udp_packets(void *sock);
 
 
 int main(int argc, char *argv[])
 {
 	WSADATA wsa;
 	HANDLE hMutex = NULL;
+	SOCKET server;
+	SOCKET udp;
+	client_node my_node;
 
 	CreateMutex(NULL, TRUE, "muu===");
 	if (GetLastError() == ERROR_ALREADY_EXISTS)
@@ -29,7 +36,11 @@ int main(int argc, char *argv[])
 		goto _cleanup;
 	}
 
-	get_nodes_from_server();
+	server 	= connect_to_server(SERVER_HOST, SERVER_PORT);
+	udp 	= bind_udp_sock(&my_node);
+	register_on_server(server, &my_node);
+	get_nodes_from_server(server);
+	shutdown(server, 0);
 
 _cleanup:
 	WSACleanup();
@@ -58,6 +69,11 @@ SOCKET connect_to_server(char *host, uint16_t port)
 	return server_socket;
 }
 
+void register_on_server(SOCKET server, client_node *mynode)
+{
+	send_packet(server, ADD_NODE, (char *)mynode, sizeof(client_node));
+}
+
 void send_packet(SOCKET sock, uint32_t command, const char *data, size_t size_of_data)
 {
 	char packet[PACKET_SIZE] = { 0 };
@@ -76,7 +92,7 @@ void send_fake_nodes(SOCKET sock)
 	{
 		client_node node;
 		node.ip = rand() % 65000;
-		node.port = rand() % 0xFFFF;
+		node.port = htons(rand() % 0xFFFF);
 		node.time = time(0);
 
 		send_packet(sock, ADD_NODE, (char *)&node, sizeof(node));
@@ -85,18 +101,16 @@ void send_fake_nodes(SOCKET sock)
 	}
 }
 
-void get_nodes_from_server(void)
+void get_nodes_from_server(SOCKET server_socket)
 {
-	SOCKET server_socket;
 	char packet[PACKET_SIZE] = { 0 };
 	unsigned long int nonblocking = 1;
 	int len = 0;
 
-	server_socket = connect_to_server(SERVER_HOST, SERVER_PORT);
 	if (server_socket == INVALID_SOCKET)
 		goto _cleanup;
 
-	send_fake_nodes(server_socket);
+	//send_fake_nodes(server_socket);
 	send_packet(server_socket, GET_LIST, NULL, 0);
 
 	ioctlsocket(server_socket, FIONBIO, &nonblocking);
@@ -121,4 +135,56 @@ void get_nodes_from_server(void)
 
 _cleanup:
 	closesocket(server_socket);
+}
+
+static void get_local_ip(char *ip_str)
+{
+	char hostname[255] = { 0 };
+	PHOSTENT hostinfo = NULL;
+	char *ip = NULL;
+
+	if (gethostname(hostname, sizeof(hostname)) == 0)
+	{
+		if ((hostinfo = gethostbyname(hostname)) != NULL)
+		{
+			ip = inet_ntoa(*(struct in_addr *)hostinfo->h_addr_list[0]);
+			strcpy(ip_str, ip);
+		}
+	}
+}
+
+SOCKET bind_udp_sock(client_node *myinfo)
+{
+	SOCKET sock;
+	SOCKADDR_IN local_addr;
+	char ip[50] = { 0 };
+
+	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET)
+	{
+		printf("Error while creating UDP socket: %d\n", WSAGetLastError());
+		return INVALID_SOCKET;
+	}
+
+	srand(time(0));
+	local_addr.sin_family 		= AF_INET;
+	local_addr.sin_addr.s_addr 	= INADDR_ANY;
+	local_addr.sin_port 		= htons(rand() % 0xAA00 + 1024);
+
+	if (bind(sock, (struct sockaddr *) &local_addr, sizeof(local_addr)) == SOCKET_ERROR)
+	{
+		printf("Error while binding udp socket: %d\n", WSAGetLastError());
+		return INVALID_SOCKET;
+	}
+	get_local_ip(ip);
+
+	myinfo->ip 		= inet_addr(ip);
+	myinfo->port 	= local_addr.sin_port;
+	myinfo->time 	= time(0);
+
+	return sock;
+}
+
+void handle_udp_packets(void *sock)
+{
+
 }
