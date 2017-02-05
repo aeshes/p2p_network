@@ -70,6 +70,37 @@ void send_iptable(SOCKET sock)
 
 }
 
+static void send_packet_udp(client_node * node, int command, void * data, size_t size_of_data)
+{
+	SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
+	struct sockaddr_in dest_addr;
+	char packet[PACKET_SIZE] = { 0 };
+
+	dest_addr.sin_family = AF_INET;
+	dest_addr.sin_addr.s_addr = node->ip;
+	dest_addr.sin_port = node->port;
+
+	header *hdr = (header *) packet;
+	hdr->command = command;
+
+	memcpy(&packet[sizeof(header)], data, size_of_data);
+
+	sendto(sock, packet, PACKET_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+
+	closesocket(sock);
+}
+
+void send_iptable_to_node_udp(client_node * node)
+{
+	for (size_t node_idx = 0; node_idx < NODE_TABLE_SIZE; ++node_idx)
+	{
+		if (memcmp(&routing_table[node_idx], &null_node, sizeof(routing_table[node_idx])) != 0)
+		{
+			send_packet_udp(node, ADD_NODE, &routing_table[node_idx], sizeof(routing_table[node_idx]));
+		}
+	}
+}
+
 static void show_node_data(client_node * client)
 {
 	struct in_addr addr;

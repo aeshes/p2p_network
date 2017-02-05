@@ -13,6 +13,8 @@ void add_node(client_node * new_node);
 
 void send_iptable(SOCKET sock);
 
+void send_iptable_to_node_udp(client_node * node);
+
 void show_iptable(void);
 
 
