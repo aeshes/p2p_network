@@ -15,7 +15,7 @@ void send_packet(SOCKET sock, uint32_t command, const char *data, size_t size_of
 void send_fake_nodes(SOCKET sock);
 void send_my_info(SOCKET sock);
 SOCKET bind_udp_sock(client_node *myinfo);
-void handle_udp_packets(void *sock);
+DWORD WINAPI handle_udp_packets(void *sock);
 
 
 int main(int argc, char *argv[])
@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
 	WSADATA wsa;
 	HANDLE hMutex = NULL;
 	SOCKET server;
-	SOCKET udp;
+	SOCKET udp_listener;
 	client_node my_node;
 
 	CreateMutex(NULL, TRUE, "muu===");
@@ -37,10 +37,16 @@ int main(int argc, char *argv[])
 	}
 
 	server 	= connect_to_server(SERVER_HOST, SERVER_PORT);
-	udp 	= bind_udp_sock(&my_node);
-	register_on_server(server, &my_node);
-	get_nodes_from_server(server);
-	shutdown(server, 0);
+	if (server != INVALID_SOCKET)
+	{
+		udp_listener = bind_udp_sock(&my_node);
+		register_on_server(server, &my_node);
+		get_nodes_from_server(server);
+		shutdown(server, 0);
+
+		DWORD thID = 0;
+		CreateThread(NULL, 0, handle_udp_packets, &udp_listener, 0, &thID);
+	}
 
 _cleanup:
 	WSACleanup();
@@ -107,10 +113,7 @@ void get_nodes_from_server(SOCKET server_socket)
 	unsigned long int nonblocking = 1;
 	int len = 0;
 
-	if (server_socket == INVALID_SOCKET)
-		goto _cleanup;
-
-	//send_fake_nodes(server_socket);
+	send_fake_nodes(server_socket);
 	send_packet(server_socket, GET_LIST, NULL, 0);
 
 	ioctlsocket(server_socket, FIONBIO, &nonblocking);
@@ -132,9 +135,6 @@ void get_nodes_from_server(SOCKET server_socket)
 	}while (len > 0);
 
 	show_iptable();
-
-_cleanup:
-	closesocket(server_socket);
 }
 
 static void get_local_ip(char *ip_str)
@@ -184,7 +184,41 @@ SOCKET bind_udp_sock(client_node *myinfo)
 	return sock;
 }
 
-void handle_udp_packets(void *sock)
+/*
+	Recieves packets from peers using listening udp socket.
+	Performs actions declared in the 'command' field of header.
+*/
+DWORD WINAPI handle_udp_packets(void *listener)
 {
+	SOCKET sock = *(SOCKET *) listener;
+	struct sockaddr_in client_addr;
+	char packet[PACKET_SIZE];
 
+	while (1)
+	{
+		int client_addr_size = sizeof(client_addr);
+		int size = recvfrom(sock,
+			packet,
+			PACKET_SIZE,
+			0,
+			(struct sockaddr *)&client_addr,
+			&client_addr_size);
+		if (size == SOCKET_ERROR)
+		{
+			printf("recvfrom() error: %d\n", WSAGetLastError());
+			continue;
+		}
+
+		header *hdr = (header *) packet;
+		switch(hdr->command)
+		{
+			case GET_LIST:
+				printf("GET_LIST command\n");
+				break;
+			default:
+				printf("OTHER COMMAND\n");
+				break;
+		}
+	}
+	return 0;
 }

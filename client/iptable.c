@@ -72,16 +72,10 @@ void send_iptable(SOCKET sock)
 
 static void show_node_data(client_node * client)
 {
-	printf("---- Node info ----\n");
-	printf("IP : %d\n", 	client->ip);
-	printf("PORT : %d\n", 	client->port);
-	printf("TIME : %d\n", 	client->time);
+	struct in_addr addr;
+	addr.s_addr = client->ip;
 
-	printf("RAW DATA: ");
-	for (int i = 0; i < sizeof(client_node); ++i)
-		printf("0x%02x ", ((unsigned char *)client)[i]);
-
-	printf("\n\n");
+	printf("%s\t %d\t %d\t\n", inet_ntoa(addr), client->port, client->time);
 }
 
 void show_iptable(void)
