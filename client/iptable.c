@@ -70,7 +70,15 @@ void send_iptable(SOCKET sock)
 
 }
 
-static void send_packet_udp(client_node * node, int command, void * data, size_t size_of_data)
+static void show_node_data(client_node * client)
+{
+	struct in_addr addr;
+	addr.s_addr = client->ip;
+
+	printf("%s\t %d\t %d\t\n", inet_ntoa(addr), client->port, client->time);
+}
+
+void send_packet_udp(client_node * node, int command, void * data, size_t size_of_data)
 {
 	SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
 	struct sockaddr_in dest_addr;
@@ -90,23 +98,28 @@ static void send_packet_udp(client_node * node, int command, void * data, size_t
 	closesocket(sock);
 }
 
+void send_packet_to_all_udp(int command, void * data, size_t size_of_data)
+{
+	for (size_t node_idx = 0; node_idx < NODE_TABLE_SIZE; ++node_idx)
+	{
+		if (memcmp(&routing_table[node_idx], &null_node, sizeof(routing_table[node_idx])) != 0)
+		{
+			send_packet_udp(&routing_table[node_idx], command, data, size_of_data);
+		}
+	}
+}
+
 void send_iptable_to_node_udp(client_node * node)
 {
 	for (size_t node_idx = 0; node_idx < NODE_TABLE_SIZE; ++node_idx)
 	{
 		if (memcmp(&routing_table[node_idx], &null_node, sizeof(routing_table[node_idx])) != 0)
 		{
-			send_packet_udp(node, ADD_NODE, &routing_table[node_idx], sizeof(routing_table[node_idx]));
+			client_node peer = routing_table[node_idx];
+			peer.time = time(0) - peer.time;	/* send delta instead of registering time */
+			send_packet_udp(node, ADD_NODE, &peer, sizeof(peer));
 		}
 	}
-}
-
-static void show_node_data(client_node * client)
-{
-	struct in_addr addr;
-	addr.s_addr = client->ip;
-
-	printf("%s\t %d\t %d\t\n", inet_ntoa(addr), client->port, client->time);
 }
 
 void show_iptable(void)
