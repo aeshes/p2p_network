@@ -11,20 +11,32 @@ static client_node routing_table[NODE_TABLE_SIZE] = { 0 };
 static size_t node_ptr = 0;
 static size_t node_count = 0;
 
+static client_node my_node;
+
 
 static client_node * node_already_exists(client_node * node)
 {
 	for (size_t node_idx = 0; node_idx < NODE_TABLE_SIZE; ++node_idx)
 	{
-		if (routing_table[node_idx].ip == node->ip)
+		if (routing_table[node_idx].ip == node->ip && routing_table[node_idx].port == node->port)
 			return &routing_table[node_idx];
 	}
 	return NULL;
 }
 
+static int compare_time_asc(const void *x, const void *y)
+{
+	return ((client_node *)x)->time - ((client_node *)y)->time;
+}
+
 static int compare_time_desc(const void *x, const void *y)
 {
 	return ((client_node *)y)->time - ((client_node *)x)->time;
+}
+
+static void sort_by_time_asc(void)
+{
+	qsort(routing_table, node_count, sizeof(client_node), compare_time_asc);
 }
 
 static void sort_by_time_desc(void)
@@ -38,7 +50,6 @@ void add_node(client_node * new_node)
 
 	if ((tmp = node_already_exists(new_node)) != NULL)
 	{
-		/* Update time */
 		tmp->time = new_node->time;
 	}
 	else
@@ -48,7 +59,12 @@ void add_node(client_node * new_node)
 		if (node_count < NODE_TABLE_SIZE)
 			++node_count;
 	}
-	sort_by_time_desc();
+	sort_by_time_asc();
+}
+
+void set_my_node(client_node * mynode)
+{
+	my_node = *mynode;
 }
 
 void send_iptable(SOCKET sock)
@@ -117,6 +133,7 @@ void send_iptable_to_node_udp(client_node * node)
 		{
 			client_node peer = routing_table[node_idx];
 			peer.time = time(0) - peer.time;	/* send delta instead of registering time */
+
 			send_packet_udp(node, ADD_NODE, &peer, sizeof(peer));
 		}
 	}
@@ -124,6 +141,7 @@ void send_iptable_to_node_udp(client_node * node)
 
 void show_iptable(void)
 {
+	system("cls");
 	for (size_t node_idx = 0; node_idx < NODE_TABLE_SIZE; ++node_idx)
 	{
 		if (memcmp(&routing_table[node_idx], &null_node, sizeof(client_node)) != 0)

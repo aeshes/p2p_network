@@ -18,11 +18,15 @@ typedef struct
 #pragma pack(push, 1)
 typedef struct
 {
-	char command;
+	char 	command;
+	short 	size_of_data;
 } header;
 #pragma pack(pop)
 
 /* Protocol properties */
+
+void get_header(char *packet, void *hdr);
+void get_data(char *packet, void *data);
 
 #define PACKET_SIZE 1024
 
