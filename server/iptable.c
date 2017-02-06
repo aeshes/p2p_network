@@ -36,13 +36,13 @@ void add_node(client_node * new_node)
 {
 	client_node *tmp = NULL;
 
-	if ((tmp = node_already_exists(new_node)) != NULL)
-	{
+	//if ((tmp = node_already_exists(new_node)) != NULL)
+	//{
 		/* Update time */
-		tmp->time = new_node->time;
-		tmp->port = new_node->port;
-	}
-	else
+	//	tmp->time = new_node->time;
+	//	tmp->port = new_node->port;
+	//}
+	//else
 	{
 		routing_table[node_ptr++] = *new_node;
 		node_ptr %= NODE_TABLE_SIZE;
@@ -58,6 +58,7 @@ void send_iptable(SOCKET sock)
 	header hdr = { 0 };
 
 	hdr.command = GET_LIST;
+	hdr.size_of_data = sizeof(routing_table[0]);
 	memcpy(packet, &hdr, sizeof(header));
 
 	printf("Sending node list: %d nodes\n", node_count);
@@ -78,12 +79,6 @@ static void show_node_data(client_node * client)
 	struct in_addr addr;
 	addr.s_addr = client->ip;
 	printf("%s\t %d\t %d\t\n", inet_ntoa(addr), client->port, client->time);
-
-	printf("RAW DATA: ");
-	for (int i = 0; i < sizeof(client_node); ++i)
-		printf("0x%02x ", ((unsigned char *)client)[i]);
-
-	printf("\n\n");
 }
 
 void show_iptable(void)
