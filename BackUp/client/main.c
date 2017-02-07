@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "proto.h"
 #include "iptable.h"
+#include "server.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -8,17 +9,22 @@
 #define SERVER_PORT 666
 
 
-SOCKET bind_udp_sock(uint16_t port);
+SOCKET bind_udp_sock(client_node *myinfo);
 DWORD WINAPI handle_udp_packets(void *sock);
-DWORD WINAPI broadcast(void *arg);
+DWORD WINAPI refresh_iptable(void *arg);
 
-void run_as_server(void);
-void run_as_client(void);
-void menu(void);
 
 int main(int argc, char *argv[])
 {
 	WSADATA wsa;
+	HANDLE hMutex = NULL;
+	SOCKET server;
+	SOCKET udp_listener;
+	client_node my_node;
+
+	/*CreateMutex(NULL, TRUE, "muu===");
+	if (GetLastError() == ERROR_ALREADY_EXISTS)
+		goto _cleanup;*/
 
 	if (FAILED(WSAStartup(MAKEWORD(2, 2), &wsa)))
 	{
@@ -26,59 +32,25 @@ int main(int argc, char *argv[])
 		goto _cleanup;
 	}
 
-	menu();
+	server 	= connect_to_server(SERVER_HOST, SERVER_PORT);
+	if (server != INVALID_SOCKET)
+	{
+		udp_listener = bind_udp_sock(&my_node);
+		register_on_server(server, &my_node);
+		get_nodes_from_server(server);
+		shutdown(server, 0);
+
+		DWORD thID = 0;
+		HANDLE udp_handler = CreateThread(NULL, 0, handle_udp_packets, &udp_listener, 0, &thID);
+		HANDLE refresher   = CreateThread(NULL, 0, refresh_iptable, &my_node, 0, &thID);
+
+		WaitForSingleObject(udp_handler, INFINITE);
+	}
 
 _cleanup:
 	WSACleanup();
+	CloseHandle(hMutex);
 	exit(0);
-}
-
-void menu(void)
-{
-	printf("Run as server(s) or client(c)?\n");
-	printf("enter> ");
-
-	int answer = getchar();
-	switch(answer)
-	{
-		case 's':
-			run_as_server();
-			break;
-		case 'c':
-		default:
-			run_as_client();
-	}
-	
-}
-
-void run_as_server(void)
-{
-	SOCKET udp_sock = bind_udp_sock(SERVER_PORT);
-
-	if (udp_sock != INVALID_SOCKET)
-	{
-		DWORD thID = 0;
-		HANDLE handler = CreateThread(NULL, 0, handle_udp_packets, &udp_sock, 0, &thID);
-		WaitForSingleObject(handler, INFINITE);
-	}
-}
-
-void run_as_client(void)
-{
-	srand(time(0));
-	uint16_t port = rand() % 0xAA00 + 1024;
-	SOCKET udp_sock = bind_udp_sock(port);
-	client_node srv = { inet_addr(SERVER_HOST), htons(666), 0 };
-
-	if (udp_sock != INVALID_SOCKET)
-	{
-		pull_peer_list(udp_sock, &srv);
-
-		DWORD thID = 0;
-		HANDLE handler = CreateThread(NULL, 0, handle_udp_packets, &udp_sock, 0, &thID);
-		CreateThread(NULL, 0, broadcast, &udp_sock, 0, &thID);
-		WaitForSingleObject(handler, INFINITE);
-	}
 }
 
 static void get_local_ip(char *ip_str)
@@ -97,10 +69,11 @@ static void get_local_ip(char *ip_str)
 	}
 }
 
-SOCKET bind_udp_sock(uint16_t port)
+SOCKET bind_udp_sock(client_node *myinfo)
 {
 	SOCKET sock;
 	SOCKADDR_IN local_addr;
+	char ip[50] = { 0 };
 
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET)
 	{
@@ -111,22 +84,20 @@ SOCKET bind_udp_sock(uint16_t port)
 	srand(time(0));
 	local_addr.sin_family 		= AF_INET;
 	local_addr.sin_addr.s_addr 	= INADDR_ANY;
-	local_addr.sin_port 		= htons(port);
+	local_addr.sin_port 		= htons(rand() % 0xAA00 + 1024);
 
 	if (bind(sock, (struct sockaddr *) &local_addr, sizeof(local_addr)) == SOCKET_ERROR)
 	{
 		printf("Error while binding udp socket: %d\n", WSAGetLastError());
 		return INVALID_SOCKET;
 	}
+	get_local_ip(ip);
+
+	myinfo->ip 		= inet_addr(ip);
+	myinfo->port 	= local_addr.sin_port;
+	myinfo->time 	= time(0);
 
 	return sock;
-}
-
-void get_peer_addr(struct sockaddr_in * addr, client_node * remote)
-{
-	remote->ip 		= addr->sin_addr.s_addr;
-	remote->port 	= addr->sin_port;
-	remote->time 	= time(0);
 }
 
 /*
@@ -153,27 +124,19 @@ DWORD WINAPI handle_udp_packets(void *listener)
 		header *hdr = (header *) packet;
 		switch(hdr->command)
 		{
-			case PULL:
+			case GET_LIST:
 			{
 				printf("GET_LIST command recieved\n");
 				client_node peer;
-
-				get_peer_addr(&client_addr, &peer);
-				add_node(&peer);
-
-				get_data(packet, &peer);
-				show_node_data(&peer);
-				push_peer_list(sock, &peer);
-
-				show_iptable();
+				memcpy(&peer, &packet[sizeof(header)], sizeof(client_node));
+				send_iptable_to_node_udp(&peer);
 				break;
 			}
-			case PUSH:
+			case ADD_NODE:
 			{
 				printf("ADD_NODE command recieved\n");
 				client_node peer;
-
-				get_data(packet, &peer);
+				memcpy(&peer, &packet[sizeof(header)], sizeof(client_node));
 				add_node(&peer);
 				show_iptable();
 				break;
@@ -186,13 +149,12 @@ DWORD WINAPI handle_udp_packets(void *listener)
 	return 0;
 }
 
-DWORD WINAPI broadcast(void *udp)
+DWORD WINAPI refresh_iptable(void *mynode)
 {
-	SOCKET sock = *(SOCKET *) udp;
 	while (1)
 	{
-		broadcast_peer_list(sock);
-		printf("broadcast peer list\n");
+		send_packet_to_all_udp(GET_LIST, mynode, sizeof(client_node));
+		printf("Refresh command sent (GET LIST)\n");
 		Sleep(5000);
 	}
 	return 0;

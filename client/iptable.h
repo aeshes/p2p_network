@@ -8,20 +8,16 @@
 
 #include "proto.h"
 
-void set_my_node(client_node * mynode);
-
 /* Adds new node to the routing table */
 void add_node(client_node * new_node);
 
-void send_iptable(SOCKET sock);
+void show_node_data(client_node * client);
 
-void update_iptable(void);
+void push_peer_list(SOCKET udp_sock, client_node * peer);
 
-void send_packet_udp(client_node * node, int command, void * data, size_t size_of_data);
+void pull_peer_list(SOCKET udp_sock, client_node * peer);
 
-void send_packet_to_all_udp(int command, void * data, size_t size_of_data);
-
-void send_iptable_to_node_udp(client_node * node);
+void broadcast_peer_list(SOCKET udp);
 
 void show_iptable(void);
 

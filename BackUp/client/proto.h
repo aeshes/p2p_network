@@ -25,15 +25,15 @@ typedef struct
 
 /* Protocol properties */
 
-void get_header(char *packet, header *hdr);
+void get_header(char *packet, void *hdr);
 void get_data(char *packet, void *data);
 
 #define PACKET_SIZE 1024
 
 /* Command list */
 
-#define PUSH 	0x01
-#define REMV 	0x02
-#define PULL	0x03
+#define ADD_NODE 	0x01
+#define REM_NODE 	0x02
+#define GET_LIST	0x03
 
 #endif
